@@ -1,3 +1,11 @@
 # https://developers.cloudflare.com/workers/static-assets/headers
 /_next/static/*
   Cache-Control: public,max-age=31536000,immutable
+
+# Cache the home page at the edge (no browser cache, 1 day edge cache)
+/
+  Cache-Control: public,max-age=0,s-maxage=86400
+
+# Cache any exported HTML pages similarly
+/*.html
+  Cache-Control: public,max-age=0,s-maxage=86400
