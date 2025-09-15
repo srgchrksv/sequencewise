@@ -6,15 +6,15 @@
   "name": "sequencewise",
   "main": ".open-next/worker.js",
   "compatibility_date": "2025-04-01",
-  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
   "assets": {
+    "directory": ".open-next/assets",
     "binding": "ASSETS",
-  "directory": ".open-next/assets",
-  // Serve assets directly without invoking the Worker when possible.
-  // For routes not matching a file, return index.html (SPA-style) from assets.
-  "not_found_handling": "single-page-application",
-  // Only invoke the Worker first for API routes; other paths will hit assets first.
-  "run_worker_first": ["/api/*"]
+    "not_found_handling": "404-page",
+    "html_handling": "auto-trailing-slash",
+    "run_worker_first": ["/api/*"]
   },
   "observability": {
     "enabled": true
