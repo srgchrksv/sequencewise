@@ -6,7 +6,7 @@
  */
 
 export const COMPANY = {
-    name: process.env.NEXT_PUBLIC_COMPANY_NAME || 'Sequencewise',
+    name: process.env.NEXT_PUBLIC_COMPANY_NAME || 'Sequencewise Limited',
     tagline: process.env.NEXT_PUBLIC_COMPANY_TAGLINE || 'Research. Create. Market.',
     jurisdiction: process.env.NEXT_PUBLIC_COMPANY_JURISDICTION || 'Masdar City, United Arab Emirates',
     jurisdictionShort: process.env.NEXT_PUBLIC_COMPANY_JURISDICTION_SHORT || 'UAE',
