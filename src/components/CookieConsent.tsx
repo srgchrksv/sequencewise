@@ -1,9 +1,9 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { X, Cookie, Shield, Settings, ExternalLink, Info } from 'lucide-react';
-import { useCookieConsent } from '@/contexts/CookieConsentContext';
-import { generateConsentSummary, getCurrentCookies } from '@/utils/cookieUtils';
+import { X, Cookie, Shield, Settings, ExternalLink, Info, CheckCircle, XCircle, AlertTriangle } from 'lucide-react';
+import { useCookieConsent, useCookieConsentListener } from '@/contexts/CookieConsentContext';
+import { generateConsentSummary } from '@/utils/cookieUtils';
 
 interface CookieCategory {
     id: string;
@@ -105,21 +105,23 @@ export default function CookieConsent() {
     const [localConsent, setLocalConsent] = useState(consent);
     const [isMounted, setIsMounted] = useState(false);
     const [cookieSummary, setCookieSummary] = useState<ReturnType<typeof generateConsentSummary> | null>(null);
+    const [deletionNotification, setDeletionNotification] = useState<{
+        show: boolean;
+        deleted: string[];
+        failed: string[];
+        protectedCookies: string[];
+    }>({
+        show: false,
+        deleted: [],
+        failed: [],
+        protectedCookies: []
+    });
 
-    // Prevent SSR issues by only showing after mount
+    // Initialize component and update cookie summary
     useEffect(() => {
         setIsMounted(true);
-        // Check what Cloudflare cookies are actually present
         const summary = generateConsentSummary();
         setCookieSummary(summary);
-
-        console.log('CookieConsent component debug:', {
-            isMounted: true,
-            hasConsented,
-            showSettings,
-            cookieSummary: summary,
-            consent
-        });
     }, [hasConsented, consent]);
 
     // Update local consent when global consent changes
@@ -127,20 +129,57 @@ export default function CookieConsent() {
         setLocalConsent(consent);
     }, [consent]);
 
-    const saveConsent = (newConsent: Partial<typeof consent>) => {
+    // Listen for cookie consent updates and show deletion notifications
+    useCookieConsentListener(({ cookieDeletion }) => {
+        if (cookieDeletion && cookieDeletion.attempted.length > 0) {
+            setDeletionNotification({
+                show: true,
+                deleted: cookieDeletion.deleted,
+                failed: cookieDeletion.failed,
+                protectedCookies: cookieDeletion.protectedCookies
+            });
+
+            // Auto-hide notification after 6 seconds (reduced since no manual reload needed)
+            setTimeout(() => {
+                setDeletionNotification(prev => ({ ...prev, show: false }));
+            }, 6000);
+        }
+    });
+
+    // Helper function to check if consent change will remove cookies and trigger reload
+    const saveConsentWithReloadCheck = (newConsent: Partial<typeof consent>) => {
+        const currentCookies = generateConsentSummary();
+
+        // Check if any existing cookies will be removed by this consent change
+        const willRemoveCookies = currentCookies.nonEssentialCookies.some(cookie => {
+            const finalConsent = { ...consent, ...newConsent };
+            return (
+                (cookie.category === 'performance' && !finalConsent.performance) ||
+                (cookie.category === 'functional' && !finalConsent.functional)
+            );
+        });
+
         updateConsent(newConsent);
         setShowSettings(false);
+
+        // Auto-reload when cookies need to be removed
+        if (willRemoveCookies) {
+            setTimeout(() => {
+                window.location.reload();
+            }, 1000);
+        }
     };
 
     const acceptAll = () => {
-        saveConsent({
+        saveConsentWithReloadCheck({
             performance: true,
             functional: true
         });
     };
 
     const acceptNecessaryOnly = () => {
-        saveConsent({
+        saveConsentWithReloadCheck({
+            necessary: true,
             performance: false,
             functional: false
         });
@@ -229,7 +268,7 @@ export default function CookieConsent() {
                             {/* Description */}
                             <div className="mb-6 p-4 bg-blue-50 rounded-lg">
                                 <p className="text-sm text-gray-700">
-                                    This website uses Cloudflare's security and performance services.
+                                    This website uses Cloudflare&apos;s security and performance services.
                                     The cookies listed below are set by Cloudflare to protect your browsing
                                     experience and optimize website performance. You can customize your
                                     preferences, but some cookies are strictly necessary for security.
@@ -323,7 +362,7 @@ export default function CookieConsent() {
                                     Accept Necessary Only
                                 </button>
                                 <button
-                                    onClick={() => saveConsent(localConsent)}
+                                    onClick={() => saveConsentWithReloadCheck(localConsent)}
                                     className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors"
                                 >
                                     Save Preferences
@@ -336,6 +375,56 @@ export default function CookieConsent() {
                                 </button>
                             </div>
                         </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Cookie Deletion Notification */}
+            {deletionNotification.show && (
+                <div className="fixed top-4 right-4 z-50 max-w-md bg-white border border-gray-200 rounded-lg shadow-lg p-4">
+                    <div className="flex items-start gap-3">
+                        <div className="flex-shrink-0 mt-0.5">
+                            {deletionNotification.deleted.length > 0 ? (
+                                <CheckCircle className="w-5 h-5 text-green-600" />
+                            ) : deletionNotification.failed.length > 0 ? (
+                                <XCircle className="w-5 h-5 text-red-600" />
+                            ) : (
+                                <AlertTriangle className="w-5 h-5 text-amber-600" />
+                            )}
+                        </div>
+                        <div className="flex-1">
+                            <h3 className="font-medium text-gray-900 mb-1">Cookie Management Update</h3>
+
+                            {deletionNotification.deleted.length > 0 && (
+                                <p className="text-sm text-green-700 mb-1">
+                                    ✓ Successfully removed: {deletionNotification.deleted.join(', ')}
+                                </p>
+                            )}
+
+                            {deletionNotification.failed.length > 0 && (
+                                <p className="text-sm text-amber-700 mb-1">
+                                    ⚠ Could not remove: {deletionNotification.failed.join(', ')}
+                                    <span className="block text-xs text-gray-600 mt-1">
+                                        These cookies are protected by Cloudflare security settings. Page will reload automatically.
+                                    </span>
+                                </p>
+                            )}
+
+                            {deletionNotification.protectedCookies.length > 0 && (
+                                <p className="text-sm text-blue-700">
+                                    🛡 Protected: {deletionNotification.protectedCookies.join(', ')}
+                                    <span className="block text-xs text-gray-600 mt-1">
+                                        Essential security cookies cannot be disabled
+                                    </span>
+                                </p>
+                            )}
+                        </div>
+                        <button
+                            onClick={() => setDeletionNotification(prev => ({ ...prev, show: false }))}
+                            className="flex-shrink-0 p-1 hover:bg-gray-100 rounded transition-colors"
+                        >
+                            <X className="w-4 h-4 text-gray-400" />
+                        </button>
                     </div>
                 </div>
             )}

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { shouldShowConsentBanner, generateConsentSummary } from '@/utils/cookieUtils';
+import { shouldShowConsentBanner, getSuggestedConsent, deleteCookiesBasedOnConsent } from '@/utils/cookieUtils';
 
 interface ConsentState {
     necessary: boolean;
@@ -40,22 +40,8 @@ export function CookieConsentProvider({ children }: { children: React.ReactNode 
         // Mark as hydrated to prevent SSR mismatch
         setIsHydrated(true);
 
-        // Check for existing consent in sessionStorage first (temporary), then localStorage (persistent)
+        // Check for existing consent in localStorage
         const checkConsent = () => {
-            // Check session storage for current session consent
-            const sessionConsent = sessionStorage.getItem(CONSENT_KEY);
-            if (sessionConsent) {
-                try {
-                    const parsed = JSON.parse(sessionConsent);
-                    setConsent(parsed);
-                    setHasConsented(true);
-                    return true;
-                } catch (error) {
-                    console.warn('Invalid session consent data:', error);
-                }
-            }
-
-            // Check localStorage for persistent consent
             const savedConsent = localStorage.getItem(CONSENT_KEY);
             if (savedConsent) {
                 try {
@@ -70,12 +56,14 @@ export function CookieConsentProvider({ children }: { children: React.ReactNode 
                     ) {
                         setConsent(parsed);
                         setHasConsented(true);
-                        // Also store in session for faster access during this session
-                        sessionStorage.setItem(CONSENT_KEY, JSON.stringify(parsed));
                         return true;
+                    } else {
+                        // Remove expired consent
+                        localStorage.removeItem(CONSENT_KEY);
                     }
                 } catch (error) {
                     console.warn('Invalid stored consent data:', error);
+                    localStorage.removeItem(CONSENT_KEY);
                 }
             }
 
@@ -84,16 +72,20 @@ export function CookieConsentProvider({ children }: { children: React.ReactNode 
 
         // No valid consent found - check if we actually need to show consent
         if (!checkConsent()) {
-            // For now, always show consent to test the component
-            // TODO: Change back to shouldShowConsentBanner() when ready
-            const needsConsent = true; // shouldShowConsentBanner();
-            setHasConsented(!needsConsent); // If no consent needed, mark as consented
+            const needsConsent = shouldShowConsentBanner();
 
-            console.log('Cookie consent debug:', {
-                needsConsent,
-                hasConsented: !needsConsent,
-                cookieSummary: generateConsentSummary()
-            });
+            if (needsConsent) {
+                // Auto-activate consent categories for detected cookies
+                const suggestedConsent = getSuggestedConsent();
+                setConsent({
+                    ...suggestedConsent,
+                    timestamp: 0 // Don't save yet, user needs to confirm
+                });
+                setHasConsented(false); // Show consent banner
+            } else {
+                // No cookies detected, no consent needed
+                setHasConsented(true);
+            }
         }
     }, []);
 
@@ -110,22 +102,45 @@ export function CookieConsentProvider({ children }: { children: React.ReactNode 
             version: CONSENT_VERSION
         };
 
+        // Only attempt cookie deletion if user has made an active consent decision
+        // (not just auto-suggested consent from detected cookies)
+        const deletionResult = updatedConsent.timestamp > 0 ?
+            deleteCookiesBasedOnConsent(updatedConsent) :
+            { attempted: [], deleted: [], failed: [], protectedCookies: [] };
+
+        // Debug logging for development
+        if (process.env.NODE_ENV === 'development') {
+            console.log('Consent update debug:', {
+                hasTimestamp: updatedConsent.timestamp > 0,
+                consent: updatedConsent,
+                deletionAttempted: deletionResult.attempted.length > 0,
+                deletionResult
+            });
+        }
+
         setConsent(updatedConsent);
         setHasConsented(true);
         setForceShowBanner(false);
 
         try {
-            // Store in both sessionStorage (for immediate access) and localStorage (for persistence)
-            sessionStorage.setItem(CONSENT_KEY, JSON.stringify(consentWithVersion));
+            // Store in localStorage for persistence across sessions
             localStorage.setItem(CONSENT_KEY, JSON.stringify(consentWithVersion));
         } catch (error) {
             console.warn('Failed to save cookie consent:', error);
         }
 
-        // Dispatch custom event for other components to listen to
+        // Dispatch custom event for other components to listen to, including deletion results
         window.dispatchEvent(new CustomEvent('cookieConsentUpdated', {
-            detail: updatedConsent
+            detail: {
+                consent: updatedConsent,
+                cookieDeletion: deletionResult
+            }
         }));
+
+        // Log deletion results for user transparency (in development)
+        if (process.env.NODE_ENV === 'development' && deletionResult.attempted.length > 0) {
+            console.log('Cookie deletion attempt results:', deletionResult);
+        }
     };
 
     const showConsentBanner = () => {
@@ -134,7 +149,6 @@ export function CookieConsentProvider({ children }: { children: React.ReactNode 
 
     const resetConsent = () => {
         localStorage.removeItem(CONSENT_KEY);
-        sessionStorage.removeItem(CONSENT_KEY);
         setConsent(defaultConsent);
         setHasConsented(false);
         setForceShowBanner(true);
@@ -176,10 +190,24 @@ export function useCookieCategory(category: keyof Omit<ConsentState, 'timestamp'
 }
 
 // Hook to listen to cookie consent changes
-export function useCookieConsentListener(callback: (consent: ConsentState) => void) {
+export function useCookieConsentListener(callback: (data: {
+    consent: ConsentState;
+    cookieDeletion?: {
+        attempted: string[];
+        deleted: string[];
+        failed: string[];
+        protectedCookies: string[];
+    };
+}) => void) {
     useEffect(() => {
         const handleConsentUpdate = (event: CustomEvent) => {
-            callback(event.detail);
+            // Handle both old format (just consent) and new format (consent + deletion results)
+            if (event.detail.consent) {
+                callback(event.detail);
+            } else {
+                // Legacy format - just consent object
+                callback({ consent: event.detail });
+            }
         };
 
         window.addEventListener('cookieConsentUpdated', handleConsentUpdate as EventListener);
