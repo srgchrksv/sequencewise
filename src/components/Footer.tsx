@@ -67,7 +67,6 @@ export default function Footer() {
 
                 {/* Bottom Bar */}
                 <div className="border-t border-gray-800 mt-8 pt-8 text-center">
-                    <p className="text-sm text-gray-300">{COMPANY.name}. Based in {COMPANY.jurisdiction}.</p>
                     <p className="text-sm text-gray-500">
                         © {currentYear} {COMPANY.name}. All rights reserved.
                     </p>

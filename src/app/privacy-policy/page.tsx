@@ -233,12 +233,23 @@ export default function PrivacyPolicyPage() {
                                 If you have any questions about this Privacy Policy or our data practices, please contact us:
                             </p>
 
-                            <div className="bg-gray-50 rounded-lg p-4">
-                                <p className="text-gray-700">
-                                    Email: <a href={`mailto:${CONTACT.email}`} className="text-blue-600 hover:text-blue-700">
-                                        {CONTACT.email}
-                                    </a>
-                                </p>
+                            <div className="bg-gray-50 rounded-lg p-4 space-y-3">
+                                <div>
+                                    <p className="text-gray-700 font-semibold">Data Controller:</p>
+                                    <p className="text-gray-700">{COMPANY.name}</p>
+                                </div>
+                                <div>
+                                    <p className="text-gray-700 font-semibold">Jurisdiction:</p>
+                                    <p className="text-gray-700">{COMPANY.jurisdiction}</p>
+                                </div>
+                                <div>
+                                    <p className="text-gray-700 font-semibold">Contact:</p>
+                                    <p className="text-gray-700">
+                                        Email: <a href={`mailto:${CONTACT.email}`} className="text-blue-600 hover:text-blue-700">
+                                            {CONTACT.email}
+                                        </a>
+                                    </p>
+                                </div>
                             </div>
 
                             <p className="text-sm text-gray-500 mt-6">
